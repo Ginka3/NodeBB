@@ -1,4 +1,3 @@
-
 'use strict';
 
 const fs = require('fs');
@@ -34,7 +33,6 @@ const topicEvents = require('./topics/events');
 const privileges = require('./privileges');
 const routes = require('./routes');
 const auth = require('./routes/authentication');
-
 const helpers = require('./helpers');
 
 if (nconf.get('ssl')) {
@@ -45,20 +43,16 @@ if (nconf.get('ssl')) {
 } else {
 	server = require('http').createServer(app);
 }
-
 module.exports.server = server;
 module.exports.app = app;
-
 server.on('error', (err) => {
 	if (err.code === 'EADDRINUSE') {
 		winston.error(`NodeBB address in use, exiting...\n${err.stack}`);
 	} else {
 		winston.error(err.stack);
 	}
-
 	throw err;
 });
-
 // see https://github.com/isaacs/server-destroy/blob/master/index.js
 const connections = {};
 server.on('connection', (conn) => {
@@ -68,18 +62,15 @@ server.on('connection', (conn) => {
 		delete connections[key];
 	});
 });
-
 exports.destroy = function (callback) {
 	server.close(callback);
 	for (const connection of Object.values(connections)) {
 		connection.destroy();
 	}
 };
-
 exports.getConnectionCount = function () {
 	return Object.keys(connections).length;
 };
-
 exports.listen = async function () {
 	emailer.registerApp(app);
 	setupExpressApp(app);
@@ -87,14 +78,10 @@ exports.listen = async function () {
 	logger.init(app);
 	await initializeNodeBB();
 	winston.info('🎉 NodeBB Ready');
-
 	require('./socket.io').server.emit('event:nodebb.ready', {});
-
 	plugins.hooks.fire('action:nodebb.ready');
-
 	await listen();
 };
-
 async function initializeNodeBB() {
 	const middleware = require('./middleware');
 	await meta.themes.setupPaths();
@@ -114,31 +101,24 @@ async function initializeNodeBB() {
 		await require('./widgets').moveMissingAreasToDrafts();
 	}
 }
-
 function setupExpressApp(app) {
 	const middleware = require('./middleware');
 	const pingController = require('./controllers/ping');
-
 	const relativePath = nconf.get('relative_path');
 	const viewsDir = nconf.get('views_dir');
-
 	app.engine('tpl', (filepath, data, next) => {
 		filepath = filepath.replace(/\.tpl$/, '.js');
-
 		Benchpress.__express(filepath, data, next);
 	});
 	app.set('view engine', 'tpl');
 	app.set('views', viewsDir);
 	app.set('json spaces', global.env === 'development' ? 4 : 0);
 	app.use(flash());
-
 	app.enable('view cache');
-
 	if (global.env !== 'development') {
 		app.enable('cache');
 		app.enable('minification');
 	}
-
 	if (meta.config.useCompression) {
 		const compression = require('compression');
 		app.use(compression());
@@ -151,16 +131,11 @@ function setupExpressApp(app) {
 			next();
 		});
 	}
-
 	app.get(`${relativePath}/ping`, pingController.ping);
 	app.get(`${relativePath}/sping`, pingController.ping);
-
 	setupFavicon(app);
-
 	app.use(`${relativePath}/apple-touch-icon`, middleware.routeTouchIcon);
-
 	configureBodyParser(app);
-
 	app.use(cookieParser(nconf.get('secret')));
 	app.use(useragent.express());
 	app.use(detector.middleware());
@@ -172,9 +147,7 @@ function setupExpressApp(app) {
 		resave: nconf.get('sessionResave') || false,
 		saveUninitialized: nconf.get('sessionSaveUninitialized') || false,
 	}));
-
 	setupHelmet(app);
-
 	app.use(middleware.addHeaders);
 	app.use(middleware.processRender);
 	auth.initialize(app, middleware);
@@ -186,12 +159,10 @@ function setupExpressApp(app) {
 			req: apiHelpers.buildReqObject(req),
 		}, next);
 	});
-
 	const toobusy = require('toobusy-js');
 	toobusy.maxLag(meta.config.eventLoopLagThreshold);
 	toobusy.interval(meta.config.eventLoopInterval);
 }
-
 function setupHelmet(app) {
 	const options = {
 		contentSecurityPolicy: false, // defaults are too restrive and break plugins that load external assets... 🔜
@@ -200,7 +171,6 @@ function setupHelmet(app) {
 		referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 		crossOriginEmbedderPolicy: !!meta.config['cross-origin-embedder-policy'],
 	};
-
 	if (meta.config['hsts-enabled']) {
 		options.hsts = {
 			maxAge: Math.max(0, meta.config['hsts-maxage']),
@@ -208,15 +178,12 @@ function setupHelmet(app) {
 			preload: !!meta.config['hsts-preload'],
 		};
 	}
-
 	try {
 		app.use(helmet(options));
 	} catch (err) {
 		winston.error(`[startup] unable to initialize helmet \n${err.stack}`);
 	}
 }
-
-
 function setupFavicon(app) {
 	let faviconPath = meta.config['brand:favicon'] || 'favicon.ico';
 	faviconPath = path.join(nconf.get('base_dir'), 'public', faviconPath.replace(/assets\/uploads/, 'uploads'));
@@ -224,86 +191,101 @@ function setupFavicon(app) {
 		app.use(nconf.get('relative_path'), favicon(faviconPath));
 	}
 }
-
 function configureBodyParser(app) {
 	const urlencodedOpts = nconf.get('bodyParser:urlencoded') || {};
 	if (!urlencodedOpts.hasOwnProperty('extended')) {
 		urlencodedOpts.extended = true;
 	}
 	app.use(bodyParser.urlencoded(urlencodedOpts));
-
 	const jsonOpts = nconf.get('bodyParser:json') || {};
 	app.use(bodyParser.json(jsonOpts));
 }
-
 function setupCookie() {
 	const cookie = meta.configs.cookie.get();
 	const ttl = meta.getSessionTTLSeconds() * 1000;
 	cookie.maxAge = ttl;
-
 	return cookie;
 }
 
+
 async function listen() {
-	let port = nconf.get('port');
-	const isSocket = isNaN(port) && !Array.isArray(port);
-	const socketPath = isSocket ? nconf.get('port') : '';
-
-	if (Array.isArray(port)) {
-		if (!port.length) {
-			winston.error('[startup] empty ports array in config.json');
-			process.exit();
-		}
-
-		winston.warn('[startup] If you want to start nodebb on multiple ports please use loader.js');
-		winston.warn(`[startup] Defaulting to first port in array, ${port[0]}`);
-		port = port[0];
-		if (!port) {
-			winston.error('[startup] Invalid port, exiting');
-			process.exit();
-		}
-	}
-	port = parseInt(port, 10);
-	if ((port !== 80 && port !== 443) || nconf.get('trust_proxy') === true) {
-		winston.info('🤝 Enabling \'trust proxy\'');
-		app.enable('trust proxy');
-	}
-
-	if ((port === 80 || port === 443) && process.env.NODE_ENV !== 'development') {
-		winston.info('Using ports 80 and 443 is not recommend; use a proxy instead. See README.md');
-	}
-
-	const bind_address = ((nconf.get('bind_address') === '0.0.0.0' || !nconf.get('bind_address')) ? '0.0.0.0' : nconf.get('bind_address'));
-	const args = isSocket ? [socketPath] : [port, bind_address];
-	let oldUmask;
-
-	if (isSocket) {
-		oldUmask = process.umask('0000');
-		try {
-			await exports.testSocket(socketPath);
-		} catch (err) {
-			winston.error(`[startup] NodeBB was unable to secure domain socket access (${socketPath})\n${err.stack}`);
-			throw err;
-		}
-	}
-
-	return new Promise((resolve, reject) => {
-		server.listen(...args.concat([function (err) {
-			const onText = `${isSocket ? socketPath : `${bind_address}:${port}`}`;
-			if (err) {
-				winston.error(`[startup] NodeBB was unable to listen on: ${chalk.yellow(onText)}`);
-				reject(err);
-			}
-
-			winston.info(`📡 NodeBB is now listening on: ${chalk.yellow(onText)}`);
-			winston.info(`🔗 Canonical URL: ${chalk.yellow(nconf.get('url'))}`);
-			if (oldUmask) {
-				process.umask(oldUmask);
-			}
-			resolve();
-		}]));
-	});
+    console.log('Starting listen function - Jason Shen');
+    const port = getPort();
+    console.log(`Port determined: ${port} - Jason Shen`);
+    const isSocket = isSocketPort(port);
+    const socketPath = isSocket ? nconf.get('port') : '';
+    if (isSocket) {
+        await configureSocket(socketPath);
+    }
+    const args = getBindArgs(port, isSocket);
+    return startServer(args, isSocket, socketPath, port);
 }
+
+
+function getPort() {
+    let port = nconf.get('port');
+    if (Array.isArray(port)) {
+        port = validateAndSelectPort(port);
+    }
+    return parseInt(port, 10);
+}
+
+function validateAndSelectPort(portArray) {
+    if (!portArray.length) {
+        winston.error('[startup] empty ports array in config.json');
+        process.exit();
+    }
+    winston.warn('[startup] Using the first port in the array; multi-port support requires loader.js');
+    return portArray[0];
+}
+
+function isSocketPort(port) {
+    return isNaN(port) && !Array.isArray(port);
+}
+
+async function configureSocket(socketPath) {
+    const oldUmask = process.umask('0000');
+    try {
+        await exports.testSocket(socketPath);
+    } catch (err) {
+        winston.error(`[startup] Unable to secure domain socket access (${socketPath}): ${err.stack}`);
+        throw err;
+    } finally {
+        process.umask(oldUmask);
+    }
+}
+
+function getBindArgs(port, isSocket) {
+    const bindAddress = nconf.get('bind_address') || '0.0.0.0';
+    return isSocket ? [nconf.get('port')] : [port, bindAddress];
+}
+
+function startServer(args, isSocket, socketPath, port) {
+    return new Promise((resolve, reject) => {
+        server.listen(...args, (err) => {
+            if (err) {
+                handleError(err, isSocket, socketPath, port, reject);
+            } else {
+                handleSuccess(isSocket, socketPath, port, resolve);
+            }
+        });
+    });
+}
+
+function handleError(err, isSocket, socketPath, port, reject) {
+    const onText = isSocket ? socketPath : `${nconf.get('bind_address')}:${port}`;
+    winston.error(`[startup] Unable to listen on: ${chalk.yellow(onText)}`);
+    reject(err);
+}
+
+function handleSuccess(isSocket, socketPath, port, resolve) {
+    const onText = isSocket ? socketPath : `${nconf.get('bind_address')}:${port}`;
+    winston.info(`📡 NodeBB listening on: ${chalk.yellow(onText)}`);
+    winston.info(`🔗 Canonical URL: ${chalk.yellow(nconf.get('url'))}`);
+    resolve();
+}
+
+
 
 exports.testSocket = async function (socketPath) {
 	if (typeof socketPath !== 'string') {
@@ -332,5 +314,4 @@ exports.testSocket = async function (socketPath) {
 		});
 	});
 };
-
 require('./promisify')(exports);
