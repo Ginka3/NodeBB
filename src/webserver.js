@@ -139,6 +139,18 @@ function setupExpressApp(app) {
 	app.use(cookieParser(nconf.get('secret')));
 	app.use(useragent.express());
 	app.use(detector.middleware());
+	app.use((req, res, next) => {
+		const forwardedFor = req.headers['x-forwarded-for'];
+		if (forwardedFor) {
+			// Validate the `x-forwarded-for` header for invalid characters
+			const validIpRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+			if (!validIpRegex.test(forwardedFor)) {
+				winston.error(`Invalid IP address detected in x-forwarded-for header: ${forwardedFor}`);
+				return res.status(500).send({ error: 'Invalid IP address' });
+			}
+		}
+		next();
+	});
 	app.use(session({
 		store: db.sessionStore,
 		secret: nconf.get('secret'),
